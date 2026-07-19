@@ -1,22 +1,62 @@
 // controllers/categoryController.js
 const Category = require('../models/Category');
 const Food = require('../models/Food');
-const cloudinary = require('cloudinary').v2;
 
-// @desc    Create category with image
+// @desc    Get all categories
+// @route   GET /api/categories
+// @access  Public
+exports.getCategories = async (req, res, next) => {
+  try {
+    const categories = await Category.find().sort({ name: 1 });
+    
+    res.status(200).json({
+      success: true,
+      count: categories.length,
+      data: categories,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get single category
+// @route   GET /api/categories/:id
+// @access  Public
+exports.getCategory = async (req, res, next) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: 'Category not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create category
 // @route   POST /api/categories
 // @access  Private/Admin
 exports.createCategory = async (req, res, next) => {
   try {
-    let imageUrl = '';
-    if (req.file) {
-      imageUrl = req.file.path; // Cloudinary URL
+    // Check if category already exists
+    const existingCategory = await Category.findOne({ name: req.body.name });
+    if (existingCategory) {
+      return res.status(400).json({
+        success: false,
+        message: 'Category already exists',
+      });
     }
 
-    const category = await Category.create({
-      ...req.body,
-      image: imageUrl,
-    });
+    const category = await Category.create(req.body);
 
     res.status(201).json({
       success: true,
@@ -41,14 +81,15 @@ exports.updateCategory = async (req, res, next) => {
       });
     }
 
-    // Update image if new file uploaded
-    if (req.file) {
-      // Delete old image from Cloudinary
-      if (category.image) {
-        const publicId = category.image.split('/').pop().split('.')[0];
-        await cloudinary.uploader.destroy(`hotel-menu/${publicId}`);
+    // Check if new name conflicts with existing category
+    if (req.body.name && req.body.name !== category.name) {
+      const existingCategory = await Category.findOne({ name: req.body.name });
+      if (existingCategory) {
+        return res.status(400).json({
+          success: false,
+          message: 'Category name already exists',
+        });
       }
-      req.body.image = req.file.path;
     }
 
     category = await Category.findByIdAndUpdate(req.params.id, req.body, {
@@ -80,18 +121,12 @@ exports.deleteCategory = async (req, res, next) => {
     }
 
     // Check if category has foods
-    const foodCount = await Food.countDocuments({ category: req.params.id });
-    if (foodCount > 0) {
+    const foodsCount = await Food.countDocuments({ category: req.params.id });
+    if (foodsCount > 0) {
       return res.status(400).json({
         success: false,
-        message: `Cannot delete category with ${foodCount} foods. Remove foods first.`,
+        message: `Cannot delete category. It has ${foodsCount} food items. Please delete or reassign foods first.`,
       });
-    }
-
-    // Delete image from Cloudinary
-    if (category.image) {
-      const publicId = category.image.split('/').pop().split('.')[0];
-      await cloudinary.uploader.destroy(`hotel-menu/${publicId}`);
     }
 
     await category.deleteOne();

@@ -1,36 +1,29 @@
 // middleware/upload.js
 const multer = require('multer');
-const path = require('path');
-const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const { cloudinary } = require('../config/cloudinary');
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Configure storage
+// Configure Cloudinary storage
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: 'hotel-menu',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-    transformation: [{ width: 500, height: 500, crop: 'limit' }],
-  },
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+    transformation: [
+      { width: 500, height: 500, crop: 'limit' },
+      { quality: 'auto' }
+    ]
+  }
 });
 
-// File filter
+// File filter to accept only images
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-
-  if (mimetype && extname) {
+  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+  
+  if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only images are allowed (jpeg, jpg, png, gif, webp)'));
+    cb(new Error('Invalid file type. Only images are allowed.'), false);
   }
 };
 
@@ -38,22 +31,30 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 1 // Only 1 file at a time
   },
-  fileFilter: fileFilter,
+  fileFilter: fileFilter
 });
 
-// Direct upload to Cloudinary (without multer)
-const uploadToCloudinary = async (filePath) => {
-  try {
-    const result = await cloudinary.uploader.upload(filePath, {
-      folder: 'hotel-menu',
-      transformation: [{ width: 500, height: 500, crop: 'limit' }],
+// Error handling middleware for multer
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'FILE_TOO_LARGE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 5MB.'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message
     });
-    return result.secure_url;
-  } catch (error) {
-    throw new Error('Failed to upload image');
   }
+  next(err);
 };
 
-module.exports = { upload, uploadToCloudinary };
+module.exports = {
+  upload,
+  handleMulterError
+};

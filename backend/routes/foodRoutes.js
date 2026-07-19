@@ -6,20 +6,24 @@ const {
   getFood,
   createFood,
   updateFood,
-  deleteFood,
-  getFoodsByCategory,
+  deleteFood
 } = require('../controllers/foodController');
+const { upload, handleMulterError } = require('../middleware/upload');
 const { protect, authorize } = require('../middleware/auth');
-const { upload } = require('../middleware/upload');
 
 // Public routes
-router.get('/', getFoods);
-router.get('/:id', getFood);
-router.get('/category/:categoryId', getFoodsByCategory);
+router.route('/')
+  .get(getFoods);
+
+router.route('/:id')
+  .get(getFood);
 
 // Admin routes
-router.post('/', protect, authorize('admin'), upload.single('image'), createFood);
-router.put('/:id', protect, authorize('admin'), upload.single('image'), updateFood);
-router.delete('/:id', protect, authorize('admin'), deleteFood);
+router.route('/')
+  .post(protect, authorize('admin'), upload.single('image'), createFood, handleMulterError);
+
+router.route('/:id')
+  .put(protect, authorize('admin'), upload.single('image'), updateFood, handleMulterError)
+  .delete(protect, authorize('admin'), deleteFood);
 
 module.exports = router;
